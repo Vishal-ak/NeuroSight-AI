@@ -75,7 +75,7 @@ For offline runs, add `--no-pretrained` to avoid downloading ImageNet weights fo
 python -m pytest -q
 ```
 
-Three starter tests are included. They have not yet been executed in a clean target environment; run the suite and verify the result before treating the repository as validated.
+Seven automated tests are included, covering preprocessing, classifier output shapes, U-Net output shapes and segmentation manifest leakage checks. The full suite has not yet been run in the target GitHub Actions environment.
 
 ## Google Colab
 
@@ -95,7 +95,7 @@ The best checkpoint is saved under `models/segmentation/unet_best.pt`; evaluatio
 
 ## Development roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation phases, release gates and remaining work.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation phases, release gates and remaining work. Public hosting guidance and privacy controls are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## External dataset experiment
 
@@ -110,7 +110,6 @@ The Cheng et al. Figshare brain tumor collection is a possible three-tumor-class
 - [x] U-Net architecture, segmentation data contract and training scaffold
 - [x] CI workflow for automated tests
 - [x] Model analytics and dataset audit pages
-- [x] Initial local smoke tests
 - [ ] Run CI and verify tests in the target environment
 - [ ] Train all model variants and record real results
 - [ ] Obtain annotated segmentation data and train U-Net
