@@ -11,7 +11,7 @@ st.markdown("""
 <div class="hero"><h1>🧠 NeuroSight AI</h1><p>See beyond the scan. Explainable deep learning for brain MRI image classification.</p></div>
 """, unsafe_allow_html=True)
 st.subheader("Intelligence workspace")
-st.write("Explore MRI predictions, model evaluation, visual explanations and dataset quality checks.")
+st.write("Explore MRI classification, experimental segmentation, explainability, model evaluation and dataset quality checks.")
 a,b,c,d=st.columns(4)
 for col,label,value in zip((a,b,c,d),("Target classes","Model families","Explainability","Benchmark"),("4","3","Grad-CAM","Image-level")): col.metric(label,value)
 left,right=st.columns(2)
@@ -29,6 +29,9 @@ with right:
     st.markdown("### 🗂️ Dataset audit")
     st.write("Inspect class balance, exact duplicates and split integrity.")
     st.page_link("pages/4_Dataset_Audit.py",label="Open Dataset Audit →")
+    st.markdown("### 🧩 Tumor segmentation")
+    st.write("Experimental U-Net mask inference; requires paired annotated MRI masks.")
+    st.page_link("pages/5_Tumor_Segmentation.py",label="Open Segmentation →")
 st.divider()
 st.warning("Research and education only. NeuroSight AI is not a medical device and must not be used for diagnosis or treatment decisions.")
 st.caption("A model score is not a calibrated clinical probability. Do not upload identifiable patient information.")
