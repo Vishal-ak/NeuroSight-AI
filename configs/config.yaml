@@ -1,0 +1,14 @@
+project:
+  name: NeuroSight AI
+  seed: 42
+  classes: [glioma, meningioma, notumor, pituitary]
+data:
+  root: data/raw/Brain_Tumor_MRI_Dataset
+  image_size: 224
+training:
+  model: cnn
+  epochs: 15
+  batch_size: 32
+  learning_rate: 0.0001
+  validation_fraction: 0.15
+  workers: 2
