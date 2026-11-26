@@ -72,7 +72,11 @@ def main():
         print(f"Epoch {epoch+1}/{args.epochs} | train loss {train_stats[0]:.4f} | train acc {train_stats[1]:.4f} | val loss {val_stats[0]:.4f} | val acc {val_stats[1]:.4f} | val macro-F1 {val_metrics['macro_f1']:.4f}")
         if val_metrics["macro_f1"]>best_f1:
             best_f1=val_metrics["macro_f1"]
-            torch.save({"state_dict":model.state_dict(),"model":args.model,"class_names":CLASS_NAMES,"image_size":args.image_size,"seed":args.seed},out/"best_model.pt")
+            checkpoint={"state_dict":model.state_dict(),"model":args.model,"class_names":CLASS_NAMES,"image_size":args.image_size,"seed":args.seed}
+            torch.save(checkpoint,out/"best_model.pt")
+            app_checkpoint=Path("models")/args.model/"best_model.pt"
+            app_checkpoint.parent.mkdir(parents=True,exist_ok=True)
+            torch.save(checkpoint,app_checkpoint)
     checkpoint=torch.load(out/"best_model.pt",map_location=device)
     model.load_state_dict(checkpoint["state_dict"])
     test_stats=run_epoch(model,test_loader,criterion,device)
