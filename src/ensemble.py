@@ -1,5 +1,5 @@
 import argparse
-import itertools
+import csv
 import json
 import shutil
 from pathlib import Path
@@ -66,35 +66,49 @@ def main():
     ensemble_result = metrics(y_true, y_pred, CLASS_NAMES, ensemble_probabilities)
     ensemble_result.update({"model": "ensemble", "weights": dict(zip(MODEL_NAMES, weights.tolist())),
                             "validation_macro_f1": validation_f1, "selection_metric": "validation_macro_f1"})
-    ensemble_dir = Path("outputs/ensemble")
-    ensemble_dir.mkdir(parents=True, exist_ok=True)
-    (ensemble_dir / "test_metrics.json").write_text(json.dumps(ensemble_result, indent=2))
-    (Path("models/ensemble")).mkdir(parents=True, exist_ok=True)
-    config = {"model": "ensemble", "members": MODEL_NAMES, "weights": dict(zip(MODEL_NAMES, weights.tolist())),
+
+    Path("models/ensemble").mkdir(parents=True, exist_ok=True)
+    members = []
+    for name in MODEL_NAMES:
+        checkpoint = torch.load(Path("models") / name / "best_model.pt", map_location="cpu")
+        members.append({"model": name, "state_dict": checkpoint["state_dict"]})
+    bundle = {"model": "ensemble", "members": members, "weights": weights.tolist(),
+              "class_names": CLASS_NAMES, "image_size": 224, "selection_metric": "validation_macro_f1"}
+    ensemble_checkpoint = Path("models/ensemble/best_model.pt")
+    torch.save(bundle, ensemble_checkpoint)
+    config = {"model": "ensemble", "members": MODEL_NAMES,
+              "weights": dict(zip(MODEL_NAMES, weights.tolist())),
               "selection_metric": "validation_macro_f1", "validation_macro_f1": validation_f1}
     (Path("models/ensemble/ensemble_config.json")).write_text(json.dumps(config, indent=2))
 
     individual_scores = {}
+    individual_test = {}
     for name in MODEL_NAMES:
-        path = Path("outputs") / name / "training_history.json"
-        if not path.exists():
-            raise FileNotFoundError(f"Missing {path}")
-        history = json.loads(path.read_text())
+        history_path = Path("outputs") / name / "training_history.json"
+        metric_path = Path("outputs") / name / "test_metrics.json"
+        if not history_path.exists() or not metric_path.exists():
+            raise FileNotFoundError(f"Missing training history or test metrics for {name}")
+        history = json.loads(history_path.read_text())
         individual_scores[name] = float(history["best_validation_macro_f1"])
+        individual_test[name] = json.loads(metric_path.read_text())
+
     candidates = {**individual_scores, "ensemble": float(validation_f1)}
     winner = max(candidates, key=candidates.get)
     overall_dir = Path("models/overall_best")
     overall_dir.mkdir(parents=True, exist_ok=True)
     if winner == "ensemble":
-        members = []
-        for name in MODEL_NAMES:
-            checkpoint = torch.load(Path("models") / name / "best_model.pt", map_location="cpu")
-            members.append({"model": name, "state_dict": checkpoint["state_dict"]})
-        bundle = {"model": "ensemble", "members": members, "weights": weights.tolist(),
-                  "class_names": CLASS_NAMES, "image_size": 224, "selection_metric": "validation_macro_f1"}
-        torch.save(bundle, overall_dir / "best_model.pt")
+        shutil.copy2(ensemble_checkpoint, overall_dir / "best_model.pt")
     else:
         shutil.copy2(Path("models") / winner / "best_model.pt", overall_dir / "best_model.pt")
+
+    ensemble_result["estimated_inference_ms_per_image"] = sum(
+        float(individual_test[name].get("inference_ms_per_image", 0.0)) for name in MODEL_NAMES
+    )
+    ensemble_result["checkpoint_size_mb"] = round(ensemble_checkpoint.stat().st_size / (1024 ** 2), 3)
+    ensemble_result["inference_note"] = "Estimated as the sum of individual model evaluation throughput measurements; measure on deployment hardware for a reliable latency figure."
+    ensemble_dir = Path("outputs/ensemble")
+    ensemble_dir.mkdir(parents=True, exist_ok=True)
+    (ensemble_dir / "test_metrics.json").write_text(json.dumps(ensemble_result, indent=2))
 
     selection = {
         "overall_best": winner,
@@ -105,16 +119,36 @@ def main():
         "warning": "Test metrics are for final reporting only; model selection and ensemble weights were determined using validation data.",
     }
     (overall_dir / "selection.json").write_text(json.dumps(selection, indent=2))
-    (Path("outputs/comparison")).mkdir(parents=True, exist_ok=True)
-    rows = [{"model": name, "validation_macro_f1": score, "selected_overall_best": name == winner}
-            for name, score in candidates.items()]
-    import csv
+
+    rows = []
+    for name in MODEL_NAMES:
+        m = individual_test[name]
+        rows.append({
+            "model": name,
+            "validation_macro_f1": individual_scores[name],
+            "test_accuracy": m.get("accuracy"),
+            "test_macro_f1": m.get("macro_f1"),
+            "inference_ms_per_image": m.get("inference_ms_per_image"),
+            "checkpoint_size_mb": m.get("checkpoint_size_mb"),
+            "selected_overall_best": name == winner,
+        })
+    rows.append({
+        "model": "ensemble",
+        "validation_macro_f1": validation_f1,
+        "test_accuracy": ensemble_result.get("accuracy"),
+        "test_macro_f1": ensemble_result.get("macro_f1"),
+        "inference_ms_per_image": ensemble_result["estimated_inference_ms_per_image"],
+        "checkpoint_size_mb": ensemble_result["checkpoint_size_mb"],
+        "selected_overall_best": winner == "ensemble",
+    })
+    Path("outputs/comparison").mkdir(parents=True, exist_ok=True)
     with (Path("outputs/comparison/model_comparison.csv")).open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)
     (Path("outputs/comparison/comparison_report.json")).write_text(json.dumps(selection, indent=2))
     print(json.dumps({"overall_best": winner, "validation_macro_f1": candidates,
+                      "ensemble_weights": config["weights"],
                       "ensemble_test_metrics": ensemble_result}, indent=2))
 
 
