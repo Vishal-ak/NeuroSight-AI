@@ -22,7 +22,7 @@ class MRISegmentationDataset(Dataset):
         absent=[p for p in list(self.frame.image_path)+list(self.frame.mask_path) if not Path(p).is_file()]
         if absent: raise FileNotFoundError(f"Missing image or mask file: {absent[0]}")
         if "patient_id" in frame.columns and frame.patient_id.notna().any():
-            split_patients=frame.dropna(subset=["patient_id"]).groupby("patient_id").split.nunique()
+            split_patients=frame.dropna(subset=["patient_id"]).groupby("patient_id")["split"].nunique()
             if (split_patients>1).any(): raise ValueError("Patient leakage: a patient_id occurs in multiple splits.")
     def __len__(self): return len(self.frame)
     def __getitem__(self,index):
@@ -33,5 +33,5 @@ class MRISegmentationDataset(Dataset):
         image=TF.resize(image,[self.image_size,self.image_size],interpolation=InterpolationMode.BILINEAR)
         mask=TF.resize(mask,[self.image_size,self.image_size],interpolation=InterpolationMode.NEAREST)
         image=TF.to_tensor(image)
-        mask=(TF.to_tensor(mask)>0.5).float()
+        mask=(TF.to_tensor(mask)>0).float()
         return image,mask
