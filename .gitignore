@@ -10,6 +10,8 @@ data/processed/*
 !data/README.md
 models/**/*.pt
 models/**/*.pth
+models/ensemble/ensemble_config.json
+models/overall_best/selection.json
 outputs/**
 !outputs/README.md
 !outputs/.gitkeep
