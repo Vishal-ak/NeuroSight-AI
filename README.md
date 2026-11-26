@@ -75,7 +75,7 @@ For offline runs, add `--no-pretrained` to avoid downloading ImageNet weights fo
 python -m pytest -q
 ```
 
-The current local smoke test run passed: **3 tests passed**. Run the suite again after changing dependencies or the target environment.
+Three starter tests are included. They have not yet been executed in a clean target environment; run the suite and verify the result before treating the repository as validated.
 
 ## Google Colab
 
