@@ -71,7 +71,7 @@ Outputs include:
 - `models/ensemble/ensemble_config.json`
 - `models/overall_best/selection.json`
 - `outputs/ensemble/test_metrics.json`
-- `outputs/comparison/model_comparison.csv`
+- `outputs/comparison/model_comparison.csv` (validation/test scores, inference estimate, checkpoint size and winner flag)
 - `outputs/comparison/comparison_report.json`
 
 The MRI Prediction page defaults to `models/overall_best/best_model.pt` when it exists. You can still select CNN, ResNet18 or MobileNetV2 individually. The Model Analytics page displays available evaluation metrics and training curves.
@@ -85,7 +85,7 @@ models/
 ├── cnn/best_model.pt
 ├── resnet18/best_model.pt
 ├── mobilenet_v2/best_model.pt
-├── ensemble/ensemble_config.json
+├── ensemble/{best_model.pt,ensemble_config.json}
 └── overall_best/
     ├── best_model.pt
     └── selection.json
