@@ -22,7 +22,7 @@ rows=[]
 for p in paths:
     try:
         m=json.loads(p.read_text())
-        rows.append({"Model":p.parent.name,"Accuracy":m["accuracy"],"Macro F1":m["macro_f1"],"Weighted F1":m["weighted_f1"],"Inference ms/image":m.get("inference_ms_per_image"),"Checkpoint MB":m.get("checkpoint_size_mb"),"data":m})
+        rows.append({"Model":p.parent.name,"Accuracy":m["accuracy"],"Macro F1":m["macro_f1"],"Weighted F1":m["weighted_f1"],"data":m})
     except Exception as exc: st.warning(f"Skipped {p}: {exc}")
 if not rows: st.error("No valid metrics files."); st.stop()
 df=pd.DataFrame(rows)
@@ -36,7 +36,9 @@ st.subheader("Model comparison")
 long=df.melt(id_vars="Model",value_vars=["Accuracy","Macro F1","Weighted F1"],var_name="Metric",value_name="Score")
 st.plotly_chart(px.bar(long,x="Model",y="Score",color="Metric",barmode="group",range_y=[0,1]),use_container_width=True)
 if m.get("inference_ms_per_image") is not None:
-    st.caption(f"Measured inference time: {m['inference_ms_per_image']:.3f} ms/image (hardware-dependent)")
+    st.caption(f"Measured evaluation throughput: {m['inference_ms_per_image']:.3f} ms/image (hardware-dependent)")
+if m.get("estimated_inference_ms_per_image") is not None:
+    st.caption(f"Estimated ensemble inference: {m['estimated_inference_ms_per_image']:.3f} ms/image; benchmark on deployment hardware before comparing latency.")
 if m.get("checkpoint_size_mb") is not None:
     st.caption(f"Checkpoint size: {m['checkpoint_size_mb']:.2f} MB")
 report=pd.DataFrame(m.get("classification_report",{})).T
