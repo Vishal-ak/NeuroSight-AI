@@ -1,15 +1,28 @@
+
+# Python cache and environments
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
 venv/
 .env
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Datasets
+dataset/
 data/raw/*
 data/processed/*
 !data/README.md
+
+# Model checkpoints
 models/**/*.pt
 models/**/*.pth
+*.onnx
+
+# Generated outputs
 outputs/**
 !outputs/README.md
 !outputs/.gitkeep
