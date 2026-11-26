@@ -1,10 +1,8 @@
 # 🧠 NeuroSight AI
 
-**See beyond the scan.** An explainable deep-learning workspace for brain MRI image classification, model evaluation and dataset quality analysis.
+**See beyond the scan.** An explainable deep-learning workspace for brain MRI image classification, model evaluation, dataset quality analysis and experimental segmentation.
 
-NeuroSight AI is an educational/research prototype that explores four image labels: **glioma, meningioma, pituitary tumor and no tumor**. It combines a PyTorch training pipeline with a Streamlit application for image inference, model analytics, Grad-CAM visualizations, experimental U-Net segmentation and dataset auditing.
-
-> **Safety:** This is not a medical device and is not validated for clinical use. Never use it to diagnose, rule out disease, or guide treatment. Model scores are not calibrated clinical probabilities.
+NeuroSight AI is an educational/research prototype for four image labels: **glioma, meningioma, pituitary tumor and no tumor**. It is not a medical device and is not validated for clinical use. Never use it to diagnose, rule out disease or guide treatment. Model scores are not calibrated clinical probabilities.
 
 ## Run the application
 
@@ -13,30 +11,11 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The dashboard has five pages: MRI Prediction, Model Analytics, Grad-CAM Explainability, Dataset Audit and Tumor Segmentation. Pages read trained checkpoints and generated reports. **No performance numbers are fabricated**; analytics remains empty until actual model evaluation files exist.
+The dashboard includes MRI Prediction, Model Analytics, Grad-CAM Explainability, Dataset Audit and Tumor Segmentation. Analytics reads real metrics files only; it does not invent results.
 
-## Repository layout
+## Dataset setup — important
 
-```text
-NeuroSight-AI/
-├── app.py
-├── pages/                  # Streamlit dashboard pages
-├── src/                    # Classifiers, U-Net, training, inference and explainability
-├── scripts/                # Dataset audit and report generation
-├── tests/                  # Automated tests
-├── notebooks/              # EDA and experiment notebooks
-├── configs/                # Experiment configuration
-├── data/                   # Raw data location (not committed)
-├── models/                 # Trained checkpoints (not committed)
-├── outputs/                # Generated reports and metrics
-├── .streamlit/             # Dashboard theme
-├── requirements.txt
-└── README.md
-```
-
-## Dataset setup
-
-Extract the provided dataset into:
+Use only the original image dataset with this structure:
 
 ```text
 data/raw/Brain_Tumor_MRI_Dataset/
@@ -44,30 +23,82 @@ data/raw/Brain_Tumor_MRI_Dataset/
 └── Testing/{glioma,meningioma,notumor,pituitary}/
 ```
 
-Run the audit:
+**Do not use `Output_images` or any previous-run prediction/visualization folder as input data.** The audit and training pipeline explicitly rejects a data root named `Output_images` and rejects manifests containing paths from that folder. `Output_images` is historical output, not a source dataset.
+
+Run the audit against the original dataset:
 
 ```bash
 python scripts/audit_dataset.py --data-dir data/raw/Brain_Tumor_MRI_Dataset
 ```
 
-The audit verifies image readability, records dimensions/modes, calculates SHA-256 hashes, identifies exact duplicates and flags identical bytes with conflicting labels. For an exact duplicate group found in both original folders, the retained copy is assigned to the test partition so that identical bytes do not appear in both partitions.
+The audit verifies readability, records image dimensions/modes, calculates SHA-256 hashes, identifies exact duplicates and flags identical bytes with conflicting labels. If an exact duplicate occurs in both original partitions, its retained copy is assigned to the test partition so identical bytes do not occur in both partitions. Exact hashing does not detect perceptual duplicates or establish patient-level independence.
 
-**Audit of the archive supplied for this project:** 7,023 readable images, 6,726 unique SHA-256 hashes, 194 exact-duplicate groups and 79 groups crossing the original train/test folders. Hashing does not detect visually similar images or establish patient-level independence. Treat resulting performance as an image-level benchmark, not patient-level or clinical validation.
+## Train all three classifiers
 
-## Train models
+Run each command with the same dataset manifest and seed. They create independent checkpoints and save validation/test predictions for fair comparison.
 
 ```bash
-# Baseline CNN
-python -m src.train --data-dir data/raw/Brain_Tumor_MRI_Dataset --model cnn --epochs 15
-
-# Transfer-learning models
-python -m src.train --data-dir data/raw/Brain_Tumor_MRI_Dataset --model resnet18 --epochs 15
-python -m src.train --data-dir data/raw/Brain_Tumor_MRI_Dataset --model mobilenet_v2 --epochs 15
+python -m src.train --data-dir data/raw/Brain_Tumor_MRI_Dataset --model cnn --epochs 15 --seed 42
+python -m src.train --data-dir data/raw/Brain_Tumor_MRI_Dataset --model resnet18 --epochs 15 --seed 42
+python -m src.train --data-dir data/raw/Brain_Tumor_MRI_Dataset --model mobilenet_v2 --epochs 15 --seed 42
 ```
 
-Training creates a stratified validation split from the deduplicated training partition, selects the best checkpoint by validation macro-F1, and evaluates that checkpoint on the deduplicated test partition. Metrics are written to `outputs/<model>/test_metrics.json`; the selected checkpoint is saved to both `outputs/<model>/best_model.pt` and `models/<model>/best_model.pt` for dashboard inference.
-
 For offline runs, add `--no-pretrained` to avoid downloading ImageNet weights for ResNet18/MobileNetV2. Use a GPU where available; reduce `--batch-size` if memory is limited.
+
+Each run saves:
+- `models/<model>/best_model.pt` and `outputs/<model>/best_model.pt`: checkpoint selected by validation macro-F1.
+- `outputs/<model>/training_history.json`: per-epoch train/validation loss, accuracy, validation macro-F1 and hyperparameters.
+- `outputs/<model>/validation_predictions.npz`: validation labels, probabilities and paths.
+- `outputs/<model>/test_predictions.npz`: held-out test labels, probabilities and paths.
+- `outputs/<model>/test_metrics.json`: test accuracy, macro/weighted F1, per-class precision/recall/sensitivity/specificity, confusion matrix, ROC-AUC/PR-AUC where defined, approximate inference throughput and checkpoint size.
+
+## Tune ensemble and select overall best
+
+After all three model runs complete:
+
+```bash
+python -m src.ensemble
+```
+
+The ensemble script:
+1. Checks that all models produced predictions for exactly the same validation and test samples in the same order.
+2. Searches non-negative probability weights that sum to one, using validation macro-F1 only.
+3. Evaluates the selected weighted ensemble on the held-out test predictions.
+4. Compares the ensemble with the individual models using validation macro-F1.
+5. Writes the winning individual checkpoint or ensemble bundle to `models/overall_best/best_model.pt`.
+
+Outputs include:
+- `models/ensemble/ensemble_config.json`
+- `models/overall_best/selection.json`
+- `outputs/ensemble/test_metrics.json`
+- `outputs/comparison/model_comparison.csv`
+- `outputs/comparison/comparison_report.json`
+
+The MRI Prediction page defaults to `models/overall_best/best_model.pt` when it exists. You can still select CNN, ResNet18 or MobileNetV2 individually. The Model Analytics page displays available evaluation metrics and training curves.
+
+**Selection discipline:** weights and winner are selected using validation data. The test partition is held out for final reporting and must not be used to tune weights or choose the winner. The selected ensemble's validation score may be optimistic because weights are tuned on that validation set; report the untouched test result and consider a separate external/patient-disjoint validation before making strong claims.
+
+## Recommended storage layout
+
+```text
+models/
+├── cnn/best_model.pt
+├── resnet18/best_model.pt
+├── mobilenet_v2/best_model.pt
+├── ensemble/ensemble_config.json
+└── overall_best/
+    ├── best_model.pt
+    └── selection.json
+
+outputs/
+├── cnn/{training_history.json,validation_predictions.npz,test_predictions.npz,test_metrics.json}
+├── resnet18/{...}
+├── mobilenet_v2/{...}
+├── ensemble/test_metrics.json
+└── comparison/{model_comparison.csv,comparison_report.json}
+```
+
+Model weights and generated outputs are excluded from Git by `.gitignore`. Back them up locally or in Google Drive; do not commit raw MRI images or checkpoints to a public repository.
 
 ## Tests
 
@@ -75,47 +106,15 @@ For offline runs, add `--no-pretrained` to avoid downloading ImageNet weights fo
 python -m pytest -q
 ```
 
-Seven automated tests are included, covering preprocessing, classifier output shapes, U-Net output shapes and segmentation manifest leakage checks. The full suite has not yet been run in the target GitHub Actions environment.
+The CI workflow runs the automated tests on pushes and pull requests. A passing local test run or CI run must be verified before claiming the pipeline is validated.
 
-## Google Colab
+## U-Net segmentation
 
-Clone this repository in Colab, install dependencies, mount/upload the dataset, run the audit and training commands above, then launch the dashboard with `streamlit run app.py`. Persist checkpoints and generated outputs in Drive if needed. Do not commit raw MRI images or model weights to GitHub.
+The repository also contains a U-Net architecture and training scaffold. The four-class classification dataset has image-level labels, not pixel-level tumor masks, so it cannot train U-Net. Use a separate expert-annotated segmentation dataset and patient-disjoint splits where identifiers exist. See [docs/SEGMENTATION_DATA.md](docs/SEGMENTATION_DATA.md).
 
-## U-Net segmentation (separate annotated dataset required)
+## Existing dataset audit
 
-A U-Net architecture, paired-image/mask dataset loader, Dice utilities and training entry point are included. The classification dataset does not contain pixel-level masks, so it cannot train this segmentation model.
-
-Prepare `data/segmentation/manifest.csv` as documented in [docs/SEGMENTATION_DATA.md](docs/SEGMENTATION_DATA.md), using expert-annotated masks and patient-disjoint splits wherever patient IDs exist. Then run:
-
-```bash
-python -m src.train_segmentation --manifest data/segmentation/manifest.csv --epochs 30
-```
-
-The best checkpoint is saved under `models/segmentation/unet_best.pt`; evaluation metrics are saved to `outputs/segmentation/segmentation_metrics.json`. The dashboard segmentation page remains unavailable until this checkpoint exists.
-
-## Development roadmap
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation phases, release gates and remaining work. Public hosting guidance and privacy controls are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-
-## External dataset experiment
-
-The Cheng et al. Figshare brain tumor collection is a possible three-tumor-class research benchmark: <https://figshare.com/articles/dataset/brain_tumor_dataset/1512427>. It does not provide the same four-class task. Check provenance and exact/perceptual overlap before calling it independent external validation; preserve patient identifiers and use patient-disjoint splits when available.
-
-## Project status
-
-- [x] Dataset audit and duplicate-aware manifest generation
-- [x] Streamlit dashboard and model inference integration
-- [x] CNN, ResNet18 and MobileNetV2 training implementations
-- [x] Grad-CAM integration
-- [x] U-Net architecture, segmentation data contract and training scaffold
-- [x] CI workflow for automated tests
-- [x] Model analytics and dataset audit pages
-- [ ] Run CI and verify tests in the target environment
-- [ ] Train all model variants and record real results
-- [ ] Obtain annotated segmentation data and train U-Net
-- [ ] Inspect perceptual duplicates and dataset provenance
-- [ ] Validate on an independent patient-disjoint dataset
-- [ ] Deploy after selecting and reviewing a trained checkpoint
+The archive previously supplied for this project was reported as 7,023 readable images, 6,726 unique SHA-256 hashes, 194 exact-duplicate groups and 79 groups crossing the original train/test folders. These are audit facts, not model performance. Hashing does not detect visually similar images or prove patient-level independence.
 
 ## License
 
