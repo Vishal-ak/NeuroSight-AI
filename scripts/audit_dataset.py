@@ -14,11 +14,13 @@ def sha256(path):
     return digest.hexdigest()
 
 def main():
-    parser=argparse.ArgumentParser(description="Audit MRI images and exact duplicate leakage.")
+    parser=argparse.ArgumentParser(description="Audit original MRI images and exact duplicate leakage; previous output folders are excluded.")
     parser.add_argument("--data-dir",required=True)
     parser.add_argument("--output-dir",default="outputs/audit")
     args=parser.parse_args()
     root=Path(args.data_dir).resolve()
+    if any(part.lower()=="output_images" for part in root.parts):
+        raise SystemExit("Refusing to audit Output_images: it contains previous-run outputs, not the original dataset.")
     output=Path(args.output_dir)
     output.mkdir(parents=True,exist_ok=True)
     rows=[]; errors=[]
@@ -29,6 +31,7 @@ def main():
                 errors.append(f"Missing folder: {folder}")
                 continue
             for path in sorted(folder.rglob("*")):
+                if any(part.lower()=="output_images" for part in path.parts): continue
                 if not path.is_file() or path.suffix.lower() not in VALID_EXTENSIONS: continue
                 try:
                     file_hash=sha256(path)
@@ -37,18 +40,15 @@ def main():
                         width,height,mode,fmt=image.width,image.height,image.mode,image.format
                     rows.append({"path":str(path),"original_split":split,"partition":"train" if split=="Training" else "test","class_name":class_name,"label_id":CLASSES.index(class_name),"sha256":file_hash,"width":width,"height":height,"mode":mode,"format":fmt})
                 except Exception as exc: errors.append(f"{path}: {exc}")
-    if not rows:
-        raise SystemExit("No readable images found. Check the data directory layout.")
+    if not rows: raise SystemExit("No readable original images found. Check the Training/Testing directory layout.")
     df=pd.DataFrame(rows)
     grouped=df.groupby("sha256")
     df["label_conflict"]=grouped.class_name.transform("nunique")>1
     df["has_test_copy"]=grouped.partition.transform(lambda values:(values=="test").any())
     df=df.sort_values(["sha256","has_test_copy","partition","path"],ascending=[True,False,True,True])
     df["keep"]=~df.duplicated("sha256",keep="first")
-    # Keep one representative per exact hash; if any copy was in Testing, assign the hash to test.
     df["partition"]=df.has_test_copy.map({True:"test",False:"train"})
     df["usable"]=df.keep & ~df.label_conflict
-    root.mkdir(parents=True,exist_ok=True)
     df.to_csv(root/"manifest.csv",index=False)
     duplicate_rows=df[df.sha256.isin(df.sha256[df.duplicated("sha256",keep=False)])]
     duplicate_rows.to_csv(output/"exact_duplicates.csv",index=False)

@@ -20,6 +20,8 @@ data/processed/*
 # Model checkpoints
 models/**/*.pt
 models/**/*.pth
+models/ensemble/ensemble_config.json
+models/overall_best/selection.json
 *.onnx
 
 # Generated outputs
